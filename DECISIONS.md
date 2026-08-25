@@ -8,26 +8,27 @@ Para garantizar que una sesión con 10 lugares expuesta a 200 peticiones simult�
 
 #### Flujo exacto de ejecución en `src/services/booking.service.ts`:
 1. Se inicia una transacción PostgreSQL (`BEGIN`).
-2. Se ejecuta `SELECT id, capacity FROM sessions WHERE id = $1 FOR UPDATE`. Esta instrucción adquiere un bloqueo exclusivo sobre la fila de la sesión 42.
-3. Las siguientes 199 peticiones que intentan reservar la misma sesión quedan en espera bloqueadas por el motor de PostgreSQL en el paso 2.
-4. Dentro del bloqueo exclusivo de la transacción actual, se cuenta el número real de reservas existentes en la tabla `bookings`:
-   `SELECT COUNT(*)::int FROM bookings WHERE session_id = $1`.
-5. Si `booked_seats < capacity` (primeras 10 peticiones): se inserta la nueva reserva y se hace `COMMIT`. La transacción libera el bloqueo de fila.
-6. Si `booked_seats >= capacity` (siguientes 190 peticiones): se aborta la transacción (`ROLLBACK`) y se responde inmediatamente con HTTP `409 Conflict`.
+2. Se ejecuta `SELECT id, capacity FROM sessions WHERE id = $1 FOR UPDATE`. Esta instrucción adquiere un bloqueo exclusivo sobre la fila de la sesión.
+3. Las peticiones concurrentes que intentan reservar la misma sesión quedan en espera bloqueadas por el Administrador de Bloqueos (*Lock Manager*) nativo de PostgreSQL.
+4. **Idempotencia Concurrente Post-Lock**: Inmediatamente tras adquirir el lock, se consulta la tabla `idempotency_keys`. Si una petición previa con la misma clave acaba de hacer commit mientras esperábamos, se retorna inmediatamente el `201` con la misma respuesta sin procesar de nuevo.
+5. Dentro del bloqueo exclusivo, se cuenta el número real de reservas existentes en la tabla `bookings`:
+   `SELECT COUNT(*)::int AS booked_seats FROM bookings WHERE session_id = $1`.
+6. Si `booked_seats < capacity` (primeras 10 peticiones): se valida solapamiento de horarios, se inserta la reserva en `bookings`, se guarda la clave en `idempotency_keys` y se hace `COMMIT`.
+7. Si `booked_seats >= capacity` (siguientes 190 peticiones): se aborta la transacción (`ROLLBACK`) y se responde inmediatamente con HTTP `409 Conflict`.
 
 ### ¿Qué alternativas descartaste y por qué?
 
 1. **Check Constraint con columna denormalizada (`booked_seats` en `sessions`)**:
    - *Idea*: Agregar `booked_seats INT` a `sessions` y hacer `UPDATE sessions SET booked_seats = booked_seats + 1 WHERE id = $1 AND booked_seats < capacity`.
-   - *Por qué se descartó*: Aunque es rápido, exige actualizar dos tablas (`sessions` y `bookings`) y en caso de cancelación exige decrementar. Si la transacción de reserva falla a medio camino o hay anulaciones, el contador denormalizado corre el riesgo de desincronizarse con la tabla `bookings`.
+   - *Por qué se descartó*: Aunque es rápido, exige sincronizar dos tablas (`sessions` y `bookings`) y decrementar en cancelaciones. En caso de anulaciones concurrentes o fallos transaccionales, la columna denormalizada corre riesgo de desfasarse de las filas reales en `bookings`.
 
 2. **Bloqueo Optimista (`Optimistic Concurrency Control` / Versioning)**:
    - *Idea*: Usar una columna `version` en `sessions` y hacer `UPDATE ... WHERE version = N`.
-   - *Por qué se descartó*: Bajo una ráfaga masiva de 200 peticiones simultáneas sobre 10 lugares, 190 peticiones fallarían por conflicto de versión y exigirían reintentos intensivos (*retry loops*), saturando la CPU y la base de datos con transacciones fallidas en lugar de ser rechazadas limpiamente con HTTP 409.
+   - *Por qué se descartó*: Bajo una ráfaga masiva de 200 peticiones simultáneas sobre 10 lugares, 190 peticiones fallarían por conflicto de versión y exigirían reintentos intensivos (*retry loops*), saturando la CPU y la base de datos con transacciones abortadas en lugar de ser rechazadas limpiamente con HTTP 409.
 
 3. **Redis Distributed Lock (Redlock)**:
    - *Idea*: Adquirir un lock en Redis (`SET lock_session_42 NX PX 5000`) antes de tocar PostgreSQL.
-   - *Por qué se descartó*: Añade una dependencia de infraestructura externa adicional que puede fallar o perder sincronía si la base de datos aborta la transacción pero Redis otorgó el lock. El lock nativo de PostgreSQL es 100% consistente en la misma base de datos.
+   - *Por qué se descartó*: Añade una dependencia de infraestructura externa adicional (otro servicio que mantener y monitorear) que puede desincronizarse si la base de datos aborta la transacción pero Redis otorgó el lock. El lock nativo de PostgreSQL es 100% consistente dentro del mismo motor transaccional.
 
 ---
 
@@ -35,12 +36,12 @@ Para garantizar que una sesión con 10 lugares expuesta a 200 peticiones simult�
 
 ### Si mañana corremos 3 instancias de la API detrás de un balanceador, ¿tu solución sigue funcionando? ¿Por qué?
 
-**Sí, funciona perfectamente sin ninguna modificación.**
+**Sí, funciona exactamente igual sin ninguna modificación.**
 
 ### Razones Técnicas:
-- **Estado centralizado en PostgreSQL**: El servidor de la API Node.js/Express es completamente **stateless** (sin estado local en memoria).
-- **Coordinación de Bloqueos a Nivel de Base de Datos**: Cuando 3 instancias de la API reciben 200 peticiones distribuidas por un balanceador de carga (ej. Nginx o AWS ALB), las 3 instancias abren conexiones a la misma base de datos PostgreSQL.
-- Cuando la Instancia A y la Instancia B ejecutan `SELECT ... FOR UPDATE` sobre `session_id = 42`, el Administrador de Bloqueos (*Lock Manager*) nativo de PostgreSQL serializa las peticiones a nivel de kernel/Motor de BD. Solo una transacción obtiene la cerradura a la vez, garantizando consistencia ACID absoluta sin importar cuántas instancias de la API existan.
+- **API Stateless**: El backend en Express no almacena estado de locks ni reservas en memoria de proceso Node.js.
+- **Bloqueos Centralizados en el Motor de BD**: Cuando 3 instancias de la API reciben 200 peticiones distribuidas por un balanceador de carga (ej. Nginx o AWS ALB), las 3 instancias abren conexiones a la misma base de datos PostgreSQL.
+- Cuando la Instancia 1 y la Instancia 2 ejecutan `SELECT ... FOR UPDATE` sobre `session_id = 42`, el Lock Manager de PostgreSQL serializa las peticiones a nivel de BD. Solo una transacción obtiene la cerradura a la vez, garantizando consistencia ACID absoluta.
 
 ---
 
@@ -51,7 +52,7 @@ Para garantizar que una sesión con 10 lugares expuesta a 200 peticiones simult�
 Se logró mediante **Paginación por Cursor Opaco** (en lugar de `OFFSET`) e **Índices Compuestos B-Tree** en PostgreSQL.
 
 #### 1. Evitar OFFSET:
-En bases de datos relacionales con ~100.000 filas, `OFFSET 50000` exige a la base de datos escanear 50.000 filas anteriores para descartarlas ($O(N)$). Con Cursor Pagination, codificamos la tupla `(starts_at, id)` de la última sesión en `base64`. PostgreSQL salta directamente al lugar correcto del índice B-Tree en tiempo constante ($O(\log N)$).
+En tablas con ~100.000 filas, `OFFSET 50000` exige a la base de datos escanear y descartar 50.000 filas anteriores ($O(N)$). Con Cursor Pagination, codificamos la tupla `(starts_at, id)` de la última sesión en `base64`. PostgreSQL salta directamente al lugar correcto del índice B-Tree en tiempo logarítmico ($O(\log N)$).
 
 #### 2. Estrategia de Índices SQL (`schema.sql`):
 ```sql
@@ -93,7 +94,9 @@ Planning Time: 0.635 ms
 Execution Time: 0.311 ms
 ```
 
-**Resultado**: Tiempo de ejecución **0.311 ms** (sub-milisegundo), superando con creces la meta de 200 ms.
+**Resultado**: Tiempo de ejecución **0.311 ms** (sub-milisegundo), cumpliendo con holgura la meta de < 200 ms.
+
+*Nota técnica sobre `only_available`*: En el plan se observa que `available_seats > 0` opera como un `Filter` evaluado fila a fila. En el dataset promedio responde en < 1 ms, pero si en un rango de fechas el 99% de las sesiones estuvieran agotadas, PostgreSQL escanearía múltiples entradas del índice hasta completar el `LIMIT`. En §5 se documenta la solución ideal para este caso borde.
 
 ---
 
@@ -102,25 +105,23 @@ Execution Time: 0.311 ms
 ### ¿En qué partes te apoyaste en IA? ¿Qué te generó que estaba mal o incompleto, y cómo lo detectaste?
 
 1. **En qué me apoyé**:
-   - Generación inicial del boilerpate TypeScript/Express y configuración de tipos.
-   - Redacción del script de generación de seed masivo (`src/db/seed.ts`).
+   - Generación inicial del boilerplate TypeScript/Express y tipados.
+   - Script para generación masiva de datos en streaming para `seed.sql`.
 
 2. **Qué generó mal o incompleto y cómo lo detecté**:
-   - *Fallo 1: Bloqueo sin `FOR UPDATE`*: La IA sugirió inicialmente hacer una consulta `SELECT COUNT(*)` estándar previa al `INSERT` dentro de la transacción, pero **sin incluir `FOR UPDATE` en la fila de la sesión**. Al simular concurrencia, esto provocó una condición de carrera donde 200 peticiones leían el conteo en paralelo antes de que ninguna insertara, produciendo sobreventa. Lo detecté auditando el código y ejecutando `stress.js`.
-   - *Fallo 2: Solapamiento incompleto de horarios*: La IA generó una condición de solapamiento que solo comprobaba `starts_at BETWEEN start AND end`. Esto omitía el caso de una **sesión envolvente** (una sesión de 8 horas que rodea completamente a una de 2 horas). Lo detecté escribiendo la prueba unitaria en `tests/overlap.test.ts` con la fórmula correcta: `start_A < end_B AND end_A > start_B`.
+   - *Fallo 1: Condición de carrera en Idempotencia Concurrente*: La IA sugirió inicialmente verificar la tabla `idempotency_keys` únicamente fuera de la transacción. Al llegar dos peticiones simultáneas con la misma clave (ej. doble-clic rápido), la segunda entraba al lock después de que la primera había creado la reserva y era rechazada erróneamente con `409 Conflict ("Usuario ya reservó")` en vez de recibir el `201` duplicado. Se detectó creando el test de concurrencia de idempotencia en `tests/idempotency.test.ts` y se resolvió realizando una doble verificación (*double-check*) dentro del lock transaccional.
+   - *Fallo 2: Bloqueo sin `FOR UPDATE`*: La IA inicialmente sugirió un `SELECT COUNT(*)` previo al `INSERT` sin `FOR UPDATE`. Se detectó al ejecutar `stress.js` produciendo sobreventa bajo 200 conexiones.
+   - *Fallo 3: Solapamiento incompleto de horarios*: La IA sugirió un `BETWEEN` que no cubría el caso donde una sesión de 6 horas envuelve por completo a una de 1 hora. Se detectó y corrigió con la prueba en `tests/overlap.test.ts`.
 
 ---
 
-## 5. Lo que quedó fuera
+## 5. Lo que quedó fuera y Simplificaciones
 
 ### ¿Qué no hiciste y qué harías con una semana más?
 
-1. **Gestión de Colas para Conexiones de Base de Datos**:
-   - Con 200 peticiones concurrentes a `POST /bookings`, el pool de conexiones de PostgreSQL (`max: 20`) se satura brevemente esperando locks.
-   - *Con 1 semana más*: Implementaría una cola de mensajes en memoria/Redis (BullMQ) para procesar las solicitudes de reserva de manera asíncrona por sesión, o un patrón Rate Limiting + Queue.
-
-2. **Caché en Redis para `GET /sessions`**:
-   - Actualmente `GET /sessions` consulta directamente PostgreSQL. Aunque responde en < 1 ms, ante un tráfico masivo de lectura se beneficiaría de un caché en Redis invalidad por tags o TTL corto (5 segundos).
-
-3. **Notificaciones en Tiempo Real (SSE / WebSockets)**:
-   - Añadiría Server-Sent Events (SSE) para que cuando los cupos de una sesión se agoten (409/201), los navegadores de todos los usuarios actualicen el badge "AGOTADO" en tiempo real sin recargar la página.
+1. **Columna denormalizada o Materialized View para `only_available`**:
+   - Como se identificó en el `EXPLAIN ANALYZE`, el filtro `only_available` es un `Filter` evaluado post-escaneo. Para garantizar < 10 ms incluso si el 99% de los talleres están agotados, agregaría una columna `is_sold_out BOOLEAN` o `available_seats INT` indexada, o una vista materializada refrescada concurrentemente.
+2. **Buffer / Cola de Mensajes para Picos Masivos**:
+   - Con miles de peticiones simultáneas a `POST /bookings`, el pool de conexiones de Postgres (`max: 20`) se satura esperando locks. Con 1 semana más implementaría una cola (BullMQ + Redis) para procesar reservas de forma ordenada por sala.
+3. **Decisión consciente en `/login`**:
+   - Siguiendo la indicación explícita del reto (*"No inviertas tiempo en registro ni contraseñas: dos usuarios sembrados y un POST /login bastan"*), `/login` autentica por email y emite JWT firmado sin validar el hash de bcrypt, priorizando la simplicidad del flujo de prueba.

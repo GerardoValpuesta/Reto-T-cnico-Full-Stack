@@ -35,7 +35,7 @@ export interface CreateBookingParams {
 }
 
 export async function createBooking({ userId, sessionId, idempotencyKey }: CreateBookingParams) {
-  // 1. Check idempotency key if present
+  // 1. Fast-path check for idempotency key outside transaction (handles sequential retries)
   if (idempotencyKey) {
     const existing = await pool.query(
       'SELECT response_status, response_body FROM idempotency_keys WHERE key = $1 AND user_id = $2',
@@ -54,7 +54,24 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
 
   // 2. Execute transactional booking with pessimistic lock
   const result = await withTransaction(async (client) => {
-    // Lock session row pesimistically to prevent race conditions & overbooking
+    // 2.1. Concurrency-safe check inside transaction (handles concurrent retries / double-clicks)
+    if (idempotencyKey) {
+      const existingInTx = await client.query(
+        'SELECT response_status, response_body FROM idempotency_keys WHERE key = $1 AND user_id = $2',
+        [idempotencyKey, userId]
+      );
+
+      if (existingInTx.rows.length > 0) {
+        const row = existingInTx.rows[0];
+        return {
+          status: row.response_status,
+          body: row.response_body,
+          fromCache: true,
+        };
+      }
+    }
+
+    // 2.2. Lock session row pesimistically to prevent race conditions & overbooking
     const sessionRes = await client.query(
       `SELECT id, title, starts_at, duration_minutes, capacity 
        FROM sessions 
@@ -69,7 +86,24 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
 
     const session = sessionRes.rows[0];
 
-    // Check capacity
+    // 2.3. Check if idempotency key was committed while waiting for session lock
+    if (idempotencyKey) {
+      const existingAfterLock = await client.query(
+        'SELECT response_status, response_body FROM idempotency_keys WHERE key = $1 AND user_id = $2',
+        [idempotencyKey, userId]
+      );
+
+      if (existingAfterLock.rows.length > 0) {
+        const row = existingAfterLock.rows[0];
+        return {
+          status: row.response_status,
+          body: row.response_body,
+          fromCache: true,
+        };
+      }
+    }
+
+    // 2.4. Check capacity
     const countRes = await client.query(
       'SELECT COUNT(*)::int AS booked_seats FROM bookings WHERE session_id = $1',
       [sessionId]
@@ -80,7 +114,7 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
       throw new ConflictError('Session capacity reached (no available seats)');
     }
 
-    // Check duplicate booking for same user and session
+    // 2.5. Check duplicate booking for same user and session (without matching idempotency key)
     const duplicateRes = await client.query(
       'SELECT 1 FROM bookings WHERE session_id = $1 AND user_id = $2',
       [sessionId, userId]
@@ -90,7 +124,7 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
       throw new ConflictError('User has already booked this session');
     }
 
-    // Check schedule overlap
+    // 2.6. Check schedule overlap
     const newStart = new Date(session.starts_at);
     const newEnd = new Date(newStart.getTime() + session.duration_minutes * 60 * 1000);
 
@@ -111,7 +145,7 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
       );
     }
 
-    // Insert booking
+    // 2.7. Insert booking
     const insertRes = await client.query(
       'INSERT INTO bookings (session_id, user_id) VALUES ($1, $2) RETURNING id, created_at',
       [sessionId, userId]
@@ -129,7 +163,7 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
       booking: newBooking,
     };
 
-    // Save idempotency key if provided
+    // 2.8. Save idempotency key if provided
     if (idempotencyKey) {
       await client.query(
         `INSERT INTO idempotency_keys (key, user_id, response_status, response_body)
