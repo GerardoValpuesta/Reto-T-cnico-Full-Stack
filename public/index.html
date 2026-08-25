@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plataforma de Reserva de Talleres Presenciales</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Navbar / Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">🎟️</div>
+        <div>
+          <h1>Talleres Presenciales</h1>
+          <p class="subtitle">Plataforma de reserva en tiempo real</p>
+        </div>
+      </div>
+      <div class="auth-bar">
+        <label for="userSelect">Usuario Activo:</label>
+        <select id="userSelect" class="input-select">
+          <option value="user1@example.com">user1@example.com (Usuario 1)</option>
+          <option value="user2@example.com">user2@example.com (Usuario 2)</option>
+        </select>
+        <button id="btnLogin" class="btn btn-primary">Iniciar Sesión</button>
+        <span id="userBadge" class="user-badge hidden">✓ Conectado</span>
+      </div>
+    </header>
+
+    <!-- Notification / Alert Toast Banner -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Main Grid -->
+    <main class="main-content">
+      <!-- Filters Sidebar / Controls -->
+      <section class="filters-card">
+        <h3>🔍 Filtros de Búsqueda</h3>
+        <div class="filter-group">
+          <label>Desde:</label>
+          <input type="datetime-local" id="filterFrom" class="input-field">
+        </div>
+        <div class="filter-group">
+          <label>Hasta:</label>
+          <input type="datetime-local" id="filterTo" class="input-field">
+        </div>
+        <div class="filter-group">
+          <label>Instructor:</label>
+          <input type="text" id="filterInstructor" placeholder="Ej. Profesor X" class="input-field">
+        </div>
+        <div class="filter-group checkbox-group">
+          <label for="filterOnlyAvailable">
+            <input type="checkbox" id="filterOnlyAvailable"> Solo disponibles
+          </label>
+        </div>
+        <button id="btnApplyFilters" class="btn btn-secondary">Aplicar Filtros</button>
+      </section>
+
+      <!-- Main Sessions & Bookings Area -->
+      <section class="content-area">
+        <div class="tabs">
+          <button id="tabSessions" class="tab-btn active">📅 Sesiones Disponibles</button>
+          <button id="tabMyBookings" class="tab-btn">🎟️ Mis Reservas</button>
+        </div>
+
+        <!-- Sessions List View -->
+        <div id="sessionsView" class="view-panel">
+          <div id="sessionsLoading" class="loading-state hidden">
+            <div class="spinner"></div>
+            <p>Cargando sesiones...</p>
+          </div>
+          <div id="sessionsGrid" class="sessions-grid"></div>
+          
+          <div class="pagination-bar">
+            <button id="btnLoadMore" class="btn btn-outline hidden">Cargar más sesiones</button>
+          </div>
+        </div>
+
+        <!-- My Bookings View -->
+        <div id="myBookingsView" class="view-panel hidden">
+          <div id="myBookingsLoading" class="loading-state hidden">
+            <div class="spinner"></div>
+            <p>Cargando mis reservas...</p>
+          </div>
+          <div id="myBookingsList" class="bookings-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
