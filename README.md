@@ -16,7 +16,7 @@ Solución al reto técnico fullstack para la plataforma de reserva de talleres p
 
 ### 1. Clonar e instalar dependencias con `pnpm`
 ```bash
-git clone <URL_DEL_REPOSITORIO>
+git clone https://github.com/GerardoValpuesta/Reto-T-cnico-Full-Stack.git
 cd Reto-tecnico-Fullstack
 pnpm install
 ```
