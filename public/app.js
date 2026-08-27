@@ -1,6 +1,10 @@
 const API_URL = window.location.origin;
 let currentToken = null;
-let currentCursor = null;
+let cursorHistory = [null];
+let currentPageIndex = 0;
+let nextCursorAvailable = null;
+let hasMorePages = false;
+let userBookedSessionIds = new Set();
 
 // SVG Icons Constants
 const ICONS = {
@@ -19,11 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
 function initApp() {
   document.getElementById('btnLogin').addEventListener('click', handleLogin);
   document.getElementById('userSelect').addEventListener('change', handleLogin);
-  document.getElementById('btnApplyFilters').addEventListener('click', () => {
-    currentCursor = null;
-    loadSessions();
-  });
-  document.getElementById('btnLoadMore').addEventListener('click', () => loadSessions(true));
+  document.getElementById('btnApplyFilters').addEventListener('click', resetPaginationAndLoad);
+  
+  document.getElementById('btnPrevPage').addEventListener('click', handlePrevPage);
+  document.getElementById('btnNextPage').addEventListener('click', handleNextPage);
   
   document.getElementById('tabSessions').addEventListener('click', () => switchTab('sessions'));
   document.getElementById('tabMyBookings').addEventListener('click', () => switchTab('myBookings'));
@@ -62,49 +65,73 @@ async function handleLogin() {
     document.getElementById('userBadge').classList.remove('hidden');
     showToast(`Conectado como ${data.user.email}`, 'success');
 
-    currentCursor = null;
-    loadSessions();
+    resetPaginationAndLoad();
   } catch (err) {
     showToast('Error al iniciar sesión', 'error');
   }
 }
 
-let userBookedSessionIds = new Set();
+function resetPaginationAndLoad() {
+  cursorHistory = [null];
+  currentPageIndex = 0;
+  loadSessions();
+}
 
-async function loadSessions(append = false) {
+function handleNextPage() {
+  if (!hasMorePages) return;
+  currentPageIndex++;
+  loadSessions();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function handlePrevPage() {
+  if (currentPageIndex <= 0) return;
+  currentPageIndex--;
+  loadSessions();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function fetchUserBookings() {
+  if (!currentToken) {
+    userBookedSessionIds.clear();
+    return;
+  }
+  try {
+    const myRes = await fetch(`${API_URL}/my-bookings`, {
+      headers: { 'Authorization': `Bearer ${currentToken}` },
+    });
+    if (myRes.ok) {
+      const myData = await myRes.json();
+      userBookedSessionIds.clear();
+      myData.data.forEach((b) => {
+        if (b.session_id !== undefined && b.session_id !== null) {
+          userBookedSessionIds.add(b.session_id);
+          userBookedSessionIds.add(Number(b.session_id));
+          userBookedSessionIds.add(String(b.session_id));
+        }
+      });
+    }
+  } catch (e) {}
+}
+
+async function loadSessions() {
   const loading = document.getElementById('sessionsLoading');
   const grid = document.getElementById('sessionsGrid');
-  const btnLoadMore = document.getElementById('btnLoadMore');
+  const btnPrev = document.getElementById('btnPrevPage');
+  const btnNext = document.getElementById('btnNextPage');
+  const pageIndicator = document.getElementById('pageIndicator');
 
-  if (!append) {
-    grid.innerHTML = '';
-    loading.classList.remove('hidden');
-  }
+  grid.innerHTML = '';
+  loading.classList.remove('hidden');
 
-  // Fetch current user bookings to mark already reserved sessions
-  if (currentToken) {
-    try {
-      const myRes = await fetch(`${API_URL}/my-bookings`, {
-        headers: { 'Authorization': `Bearer ${currentToken}` },
-      });
-      if (myRes.ok) {
-        const myData = await myRes.json();
-        userBookedSessionIds.clear();
-        myData.data.forEach((b) => {
-          if (b.session_id !== undefined && b.session_id !== null) {
-            userBookedSessionIds.add(b.session_id);
-            userBookedSessionIds.add(Number(b.session_id));
-            userBookedSessionIds.add(String(b.session_id));
-          }
-        });
-      }
-    } catch (e) {}
-  }
+  await fetchUserBookings();
 
   const from = document.getElementById('filterFrom').value;
   const to = document.getElementById('filterTo').value;
   const instructor = document.getElementById('filterInstructor').value;
   const onlyAvailable = document.getElementById('filterOnlyAvailable').checked;
+
+  const currentCursor = cursorHistory[currentPageIndex] || null;
 
   const params = new URLSearchParams();
   params.append('limit', '12');
@@ -121,47 +148,70 @@ async function loadSessions(append = false) {
     const data = await res.json();
     loading.classList.add('hidden');
 
-    renderSessions(data.data, append);
+    renderSessions(data.data);
 
-    if (data.pagination.has_more) {
-      currentCursor = data.pagination.next_cursor;
-      btnLoadMore.classList.remove('hidden');
-    } else {
-      btnLoadMore.classList.add('hidden');
+    hasMorePages = !!data.pagination?.has_more;
+    nextCursorAvailable = data.pagination?.next_cursor || null;
+
+    if (hasMorePages && nextCursorAvailable) {
+      cursorHistory[currentPageIndex + 1] = nextCursorAvailable;
     }
+
+    if (pageIndicator) {
+      pageIndicator.textContent = `Página ${currentPageIndex + 1}`;
+    }
+    if (btnPrev) btnPrev.disabled = (currentPageIndex === 0);
+    if (btnNext) btnNext.disabled = !hasMorePages;
   } catch (err) {
     loading.classList.add('hidden');
     showToast('Error al consultar sesiones', 'error');
   }
 }
 
-function renderSessions(sessions, append) {
+function renderSessions(sessions) {
   const grid = document.getElementById('sessionsGrid');
   
-  if (sessions.length === 0 && !append) {
+  if (sessions.length === 0) {
     grid.innerHTML = '<p class="empty-state">No se encontraron sesiones para los criterios seleccionados.</p>';
     return;
   }
+
+  const now = Date.now();
 
   sessions.forEach((s) => {
     const card = document.createElement('div');
     card.className = 'session-card panel-card';
 
+    const sessionStartMs = new Date(s.starts_at).getTime();
+    const sessionEndMs = sessionStartMs + (s.duration_minutes * 60 * 1000);
+    const isPast = sessionEndMs < now;
+
     const isFull = s.available_seats <= 0;
     const isBooked = userBookedSessionIds.has(s.id);
-    const badgeClass = isBooked ? 'seat-badge available' : (isFull ? 'seat-badge full' : 'seat-badge available');
-    const badgeText = isBooked ? 'RESERVADO POR TI' : (isFull ? 'AGOTADO' : `${s.available_seats} / ${s.capacity} libres`);
 
-    const startsDate = new Date(s.starts_at).toLocaleString();
-
+    let badgeClass = 'seat-badge available';
+    let badgeText = `${s.available_seats} / ${s.capacity} libres`;
     let buttonHtml = '';
-    if (isBooked) {
+
+    if (isPast) {
+      badgeClass = 'seat-badge full';
+      badgeText = 'FINALIZADO';
+      buttonHtml = `<button disabled class="btn btn-secondary full-width" style="opacity: 0.6; cursor: not-allowed; font-weight: 700;">Taller Finalizado</button>`;
+    } else if (isBooked) {
+      badgeClass = 'seat-badge available';
+      badgeText = 'RESERVADO POR TI';
       buttonHtml = `<button disabled class="btn btn-secondary full-width" style="opacity: 0.9; cursor: default; background: var(--ck-orange-soft); color: var(--ck-red-dark); font-weight: 800;">Lugar Reservado</button>`;
     } else if (isFull) {
+      badgeClass = 'seat-badge full';
+      badgeText = 'AGOTADO';
       buttonHtml = `<button disabled class="btn btn-primary full-width" style="opacity: 0.5; cursor: not-allowed;">Sin Cupo Disponible</button>`;
     } else {
+      badgeClass = 'seat-badge available';
+      badgeText = `${s.available_seats} / ${s.capacity} libres`;
       buttonHtml = `<button class="btn btn-primary btn-reserve full-width" data-id="${s.id}">Reservar Lugar</button>`;
     }
+
+    const startsDate = new Date(s.starts_at).toLocaleString();
 
     card.innerHTML = `
       <div>
@@ -180,7 +230,7 @@ function renderSessions(sessions, append) {
     `;
 
     const btnReserve = card.querySelector('.btn-reserve');
-    if (btnReserve && !isFull && !isBooked) {
+    if (btnReserve && !isFull && !isBooked && !isPast) {
       btnReserve.addEventListener('click', () => handleReserve(s.id, btnReserve));
     }
 
@@ -218,7 +268,6 @@ async function handleReserve(sessionId, btnElement) {
       userBookedSessionIds.add(sessionId);
       userBookedSessionIds.add(Number(sessionId));
       userBookedSessionIds.add(String(sessionId));
-      currentCursor = null;
       loadSessions();
     } else {
       showToast(formatErrorMessage(data, res.status), 'error');
@@ -307,7 +356,10 @@ async function handleCancelBooking(bookingId) {
 
     if (res.ok) {
       showToast('Reserva cancelada correctamente', 'success');
-      loadMyBookings();
+      await loadMyBookings();
+      // Auto sync sessions view immediately
+      await fetchUserBookings();
+      loadSessions();
     } else {
       showToast(formatErrorMessage(data, res.status), 'error');
     }
@@ -612,6 +664,8 @@ function switchTab(tab) {
 
   if (tab === 'myBookings') {
     loadMyBookings();
+  } else if (tab === 'sessions') {
+    loadSessions();
   }
 }
 

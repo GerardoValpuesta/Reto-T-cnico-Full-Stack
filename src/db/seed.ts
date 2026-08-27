@@ -106,11 +106,12 @@ async function seed() {
     for (let sessionId = 1; sessionId <= 5000; sessionId++) {
       if (sessionId === 42) continue; // Session 42 starts with 0 bookings for stress test
 
+      // Distribute background load across users 3 to 100 so demo users 1 and 2 start clean
       const bookingsCount = 15 + (sessionId % 10);
-      const startUserId = 1 + (sessionId % 70);
+      const startUserId = 3 + (sessionId % 68);
 
       for (let b = 0; b < bookingsCount; b++) {
-        const userId = ((startUserId + b - 1) % 100) + 1;
+        const userId = ((startUserId + b - 3) % 98) + 3;
         bookingRows.push(`(${bookingIdCounter++}, ${sessionId}, ${userId}, NOW())`);
       }
     }

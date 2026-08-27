@@ -109,9 +109,14 @@
             <div id="sessionsGrid" class="sessions-grid"></div>
             
             <div class="pagination-bar">
-              <button id="btnLoadMore" class="btn btn-outline hidden">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
-                Cargar más sesiones (Cursor Pagination)
+              <button id="btnPrevPage" class="btn btn-outline" disabled style="display: flex; align-items: center; gap: 6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Página Anterior
+              </button>
+              <span id="pageIndicator" class="page-indicator" style="font-weight: 700; color: var(--ck-ink); font-size: 14px; display: flex; align-items: center;">Página 1</span>
+              <button id="btnNextPage" class="btn btn-outline" disabled style="display: flex; align-items: center; gap: 6px;">
+                Página Siguiente
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
           </section>
