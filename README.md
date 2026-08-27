@@ -127,3 +127,4 @@ Los tests cubren:
 
 ## Video de 5 Minutos
 
+Grabación de 5 minutos, en una sola toma, mostrando la aplicación funcionando (incluida una corrida de `stress.js`), el mecanismo usado para evitar la sobreventa, y una cosa que quedó peor de lo deseado.
