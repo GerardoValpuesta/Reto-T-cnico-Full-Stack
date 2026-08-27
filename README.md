@@ -96,6 +96,12 @@ Los tests cubren:
 ├── stress.js                       # Script de prueba de carga concurrente
 ├── DECISIONS.md                    # Respuestas fundamentadas a las 5 preguntas del reto
 ├── README.md                       # Instrucciones de instalación y uso
+├── docs/obsidian/                  # Notas técnicas ampliadas (arquitectura, concurrencia, paginación, idempotencia, solapamiento)
+│   ├── 00 - Index & Architecture Overview.md
+│   ├── 01 - Overbooking & Concurrency Control.md
+│   ├── 02 - Cursor Pagination & EXPLAIN ANALYZE.md
+│   ├── 03 - Idempotency Key Pattern.md
+│   └── 04 - Schedule Overlap & Edge Cases.md
 ├── src/
 │   ├── config/                     # Variables de entorno
 │   ├── db/                         # Pool de conexiones pg y helper transaccional
