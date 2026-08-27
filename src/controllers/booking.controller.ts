@@ -22,7 +22,8 @@ export async function handleCreateBooking(req: AuthenticatedRequest, res: Respon
       return res.status(400).json({ error: 'session_id is required and must be a number' });
     }
 
-    const idempotencyKey = (req.headers['idempotency-key'] || req.headers['x-idempotency-key']) as string | undefined;
+    const rawHeader = req.headers['idempotency-key'] || req.headers['x-idempotency-key'];
+    const idempotencyKey = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
 
     const result = await createBooking({
       userId,
@@ -53,7 +54,8 @@ export async function handleDeleteBooking(req: AuthenticatedRequest, res: Respon
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const bookingId = parseInt(req.params.id, 10);
+    const paramId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const bookingId = parseInt(paramId, 10);
     if (isNaN(bookingId)) {
       return res.status(400).json({ error: 'Invalid booking ID' });
     }
@@ -82,7 +84,8 @@ export async function handleMyBookings(req: AuthenticatedRequest, res: Response)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const bookings = await getUserBookings(userId);
+    const upcomingOnly = req.query.upcoming_only === 'true';
+    const bookings = await getUserBookings(userId, upcomingOnly);
     return res.status(200).json({ data: bookings });
   } catch (error: any) {
     console.error('Error fetching user bookings:', error);

@@ -3,94 +3,281 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Plataforma de Reserva de Talleres Presenciales</title>
+  <title>Plataforma de Reserva de Talleres Presenciales — Circle K</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="app-container">
     <!-- Navbar / Header -->
-    <header class="header">
+    <header class="header panel-card">
       <div class="brand">
-        <div class="logo-icon">🎟️</div>
+        <div class="logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+        </div>
         <div>
-          <h1>Talleres Presenciales</h1>
-          <p class="subtitle">Plataforma de reserva en tiempo real</p>
+          <h1>Circle K — Talleres Presenciales</h1>
+          <p class="subtitle">Plataforma de reserva concurrente sin sobreventa</p>
         </div>
       </div>
       <div class="auth-bar">
-        <label for="userSelect">Usuario Activo:</label>
-        <select id="userSelect" class="input-select">
-          <option value="user1@example.com">user1@example.com (Usuario 1)</option>
-          <option value="user2@example.com">user2@example.com (Usuario 2)</option>
-        </select>
-        <button id="btnLogin" class="btn btn-primary">Iniciar Sesión</button>
-        <span id="userBadge" class="user-badge hidden">✓ Conectado</span>
+        <div class="user-select-wrapper">
+          <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <select id="userSelect" class="input-select">
+            <option value="user1@example.com">user1@example.com (Usuario 1)</option>
+            <option value="user2@example.com">user2@example.com (Usuario 2)</option>
+          </select>
+        </div>
+        <button id="btnLogin" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Iniciar Sesión
+        </button>
+        <span id="userBadge" class="user-badge hidden">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Conectado
+        </span>
       </div>
     </header>
 
-    <!-- Notification / Alert Toast Banner -->
+    <!-- Toast Notification Banner -->
     <div id="toast" class="toast hidden"></div>
 
-    <!-- Main Grid -->
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs panel-card">
+      <button id="tabSessions" class="tab-btn active">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Sesiones Disponibles
+      </button>
+      <button id="tabMyBookings" class="tab-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        Mis Reservas
+      </button>
+      <button id="tabTestRunner" class="tab-btn tab-highlight">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Panel de Pruebas & Concurrencia
+      </button>
+    </nav>
+
+    <!-- Main Views Area -->
     <main class="main-content">
-      <!-- Filters Sidebar / Controls -->
-      <section class="filters-card">
-        <h3>🔍 Filtros de Búsqueda</h3>
-        <div class="filter-group">
-          <label>Desde:</label>
-          <input type="datetime-local" id="filterFrom" class="input-field">
+      <!-- VIEW 1: SESSIONS CATALOG & FILTERS -->
+      <div id="sessionsView" class="view-panel">
+        <div class="layout-grid">
+          <!-- Filters Sidebar -->
+          <aside class="filters-card panel-card">
+            <div class="card-header-sm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <h3>Filtros de Búsqueda</h3>
+            </div>
+            
+            <div class="filter-group">
+              <label>Fecha Desde:</label>
+              <input type="datetime-local" id="filterFrom" class="input-field">
+            </div>
+            
+            <div class="filter-group">
+              <label>Fecha Hasta:</label>
+              <input type="datetime-local" id="filterTo" class="input-field">
+            </div>
+            
+            <div class="filter-group">
+              <label>Instructor:</label>
+              <input type="text" id="filterInstructor" placeholder="Ej. Prof. Carlos" class="input-field">
+            </div>
+            
+            <div class="filter-group checkbox-group">
+              <label for="filterOnlyAvailable">
+                <input type="checkbox" id="filterOnlyAvailable"> Solo disponibles
+              </label>
+            </div>
+            
+            <button id="btnApplyFilters" class="btn btn-secondary full-width">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Aplicar Filtros
+            </button>
+          </aside>
+
+          <!-- Sessions Grid -->
+          <section class="content-area">
+            <div id="sessionsLoading" class="loading-state hidden">
+              <div class="spinner"></div>
+              <p>Consultando base de datos...</p>
+            </div>
+            
+            <div id="sessionsGrid" class="sessions-grid"></div>
+            
+            <div class="pagination-bar">
+              <button id="btnLoadMore" class="btn btn-outline hidden">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+                Cargar más sesiones (Cursor Pagination)
+              </button>
+            </div>
+          </section>
         </div>
-        <div class="filter-group">
-          <label>Hasta:</label>
-          <input type="datetime-local" id="filterTo" class="input-field">
-        </div>
-        <div class="filter-group">
-          <label>Instructor:</label>
-          <input type="text" id="filterInstructor" placeholder="Ej. Profesor X" class="input-field">
-        </div>
-        <div class="filter-group checkbox-group">
-          <label for="filterOnlyAvailable">
-            <input type="checkbox" id="filterOnlyAvailable"> Solo disponibles
+      </div>
+
+      <!-- VIEW 2: MY BOOKINGS -->
+      <div id="myBookingsView" class="view-panel hidden">
+        <div class="my-bookings-header panel-card" style="padding: 14px 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <h3 style="font-size: 16px; font-weight: 800; color: var(--ck-ink);">Mis Reservas</h3>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ck-muted); cursor: pointer;">
+            <input type="checkbox" id="chkUpcomingOnly" checked> Solo activas / futuras (ocultar expiradas)
           </label>
         </div>
-        <button id="btnApplyFilters" class="btn btn-secondary">Aplicar Filtros</button>
-      </section>
-
-      <!-- Main Sessions & Bookings Area -->
-      <section class="content-area">
-        <div class="tabs">
-          <button id="tabSessions" class="tab-btn active">📅 Sesiones Disponibles</button>
-          <button id="tabMyBookings" class="tab-btn">🎟️ Mis Reservas</button>
+        <div id="myBookingsLoading" class="loading-state hidden">
+          <div class="spinner"></div>
+          <p>Cargando reservas...</p>
         </div>
+        <div id="myBookingsList" class="bookings-list"></div>
+      </div>
 
-        <!-- Sessions List View -->
-        <div id="sessionsView" class="view-panel">
-          <div id="sessionsLoading" class="loading-state hidden">
-            <div class="spinner"></div>
-            <p>Cargando sesiones...</p>
+      <!-- VIEW 3: INTERACTIVE BROWSER TEST RUNNER -->
+      <div id="testRunnerView" class="view-panel hidden">
+        <div class="test-runner-container">
+          <div class="test-header panel-card">
+            <div class="test-header-info">
+              <span class="badge badge-tech">Circle K — Concurrencia Simulada</span>
+              <h2>Panel Interactivo de Pruebas en Vivo</h2>
+              <p>Ejecuta simulaciones de carga y concurrencia directamente desde el navegador para verificar la resiliencia del backend contra sobreventa e idempotencia.</p>
+            </div>
+            <button id="btnResetTestSession" class="btn btn-outline">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              Reiniciar Sesión #42 (BD)
+            </button>
           </div>
-          <div id="sessionsGrid" class="sessions-grid"></div>
-          
-          <div class="pagination-bar">
-            <button id="btnLoadMore" class="btn btn-outline hidden">Cargar más sesiones</button>
+
+          <div class="test-grid">
+            <!-- CARD 1: STRESS TEST SIMULATOR -->
+            <div class="test-card panel-card">
+              <div class="test-card-header">
+                <div class="test-icon bg-amber">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </div>
+                <div>
+                  <h3>Prueba de Carga & Concurrencia (stress.js)</h3>
+                  <p class="test-desc">Dispara peticiones simultáneas contra una sesión con cupo 10 y valida 0 sobreventa.</p>
+                </div>
+              </div>
+
+              <div class="test-controls">
+                <div class="input-pair">
+                  <label>Sesión Target (ID):</label>
+                  <input type="number" id="stressSessionId" value="42" class="input-field input-sm">
+                </div>
+                <div class="input-pair">
+                  <label>Peticiones Simultáneas:</label>
+                  <input type="number" id="stressConcurrency" value="200" class="input-field input-sm">
+                </div>
+              </div>
+
+              <button id="btnRunStressTest" class="btn btn-accent full-width">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Ejecutar Simulación de Carga
+              </button>
+
+              <!-- Stress Test Results Dashboard -->
+              <div id="stressResults" class="test-results-panel hidden">
+                <div class="metrics-grid">
+                  <div class="metric-card metric-success">
+                    <span class="metric-value" id="m201">0</span>
+                    <span class="metric-label">201 Created</span>
+                  </div>
+                  <div class="metric-card metric-conflict">
+                    <span class="metric-value" id="m409">0</span>
+                    <span class="metric-label">409 Conflict</span>
+                  </div>
+                  <div class="metric-card metric-error">
+                    <span class="metric-value" id="m500">0</span>
+                    <span class="metric-label">500 Error</span>
+                  </div>
+                  <div class="metric-card metric-db">
+                    <span class="metric-value" id="mDb">0</span>
+                    <span class="metric-label">Registros en BD</span>
+                  </div>
+                </div>
+                <div id="stressStatusBadge" class="status-badge-container"></div>
+              </div>
+            </div>
+
+            <!-- CARD 2: CONCURRENT IDEMPOTENCY TEST -->
+            <div class="test-card panel-card">
+              <div class="test-card-header">
+                <div class="test-icon bg-blue">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                </div>
+                <div>
+                  <h3>Idempotencia Concurrente</h3>
+                  <p class="test-desc">Dispara 10 peticiones simultáneas con la misma Idempotency-Key. Todas deben responder 201 y crear 1 solo registro.</p>
+                </div>
+              </div>
+
+              <button id="btnRunIdempotencyTest" class="btn btn-primary full-width" style="margin-top: 24px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Ejecutar Test de Idempotencia
+              </button>
+
+              <div id="idempotencyResults" class="test-results-panel hidden">
+                <div class="metrics-grid grid-2">
+                  <div class="metric-card metric-success">
+                    <span class="metric-value" id="mIdem201">0</span>
+                    <span class="metric-label">201 Created (Respuestas)</span>
+                  </div>
+                  <div class="metric-card metric-db">
+                    <span class="metric-value" id="mIdemDb">0</span>
+                    <span class="metric-label">Reservas Creadas en BD</span>
+                  </div>
+                </div>
+                <div id="idempotencyStatusBadge" class="status-badge-container"></div>
+              </div>
+            </div>
+
+            <!-- CARD 3: SCHEDULE OVERLAP TEST -->
+            <div class="test-card panel-card">
+              <div class="test-card-header">
+                <div class="test-icon bg-purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M10 14l2 2 4-4"/></svg>
+                </div>
+                <div>
+                  <h3>Validación de Solapamiento de Horario</h3>
+                  <p class="test-desc">Intenta reservar una sesión que se cruza en tiempo con otra ya reservada por el usuario.</p>
+                </div>
+              </div>
+
+              <button id="btnRunOverlapTest" class="btn btn-secondary full-width" style="margin-top: 24px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Ejecutar Test de Solapamiento
+              </button>
+
+              <div id="overlapResults" class="test-results-panel hidden"></div>
+            </div>
+
+            <!-- CARD 4: GET /SESSIONS LATENCY BENCHMARK -->
+            <div class="test-card panel-card">
+              <div class="test-card-header">
+                <div class="test-icon bg-emerald">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div>
+                  <h3>Benchmark de Latencia (GET /sessions)</h3>
+                  <p class="test-desc">Mide el tiempo de respuesta en milisegundos con paginación por cursor opaco.</p>
+                </div>
+              </div>
+
+              <button id="btnRunLatencyTest" class="btn btn-secondary full-width" style="margin-top: 24px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Medir Tiempo de Respuesta
+              </button>
+
+              <div id="latencyResults" class="test-results-panel hidden"></div>
+            </div>
           </div>
         </div>
-
-        <!-- My Bookings View -->
-        <div id="myBookingsView" class="view-panel hidden">
-          <div id="myBookingsLoading" class="loading-state hidden">
-            <div class="spinner"></div>
-            <p>Cargando mis reservas...</p>
-          </div>
-          <div id="myBookingsList" class="bookings-list"></div>
-        </div>
-      </section>
+      </div>
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=1.0.5"></script>
 </body>
 </html>

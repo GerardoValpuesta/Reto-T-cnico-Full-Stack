@@ -44,9 +44,10 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
 
     if (existing.rows.length > 0) {
       const row = existing.rows[0];
+      const cachedBody = typeof row.response_body === 'string' ? JSON.parse(row.response_body) : row.response_body;
       return {
         status: row.response_status,
-        body: row.response_body,
+        body: cachedBody,
         fromCache: true,
       };
     }
@@ -63,9 +64,10 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
 
       if (existingInTx.rows.length > 0) {
         const row = existingInTx.rows[0];
+        const cachedBody = typeof row.response_body === 'string' ? JSON.parse(row.response_body) : row.response_body;
         return {
           status: row.response_status,
-          body: row.response_body,
+          body: cachedBody,
           fromCache: true,
         };
       }
@@ -86,6 +88,12 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
 
     const session = sessionRes.rows[0];
 
+    // Reject bookings for sessions that have already ended
+    const sessionEnd = new Date(new Date(session.starts_at).getTime() + session.duration_minutes * 60 * 1000);
+    if (sessionEnd < new Date()) {
+      throw new ValidationError('Cannot book sessions that have already ended');
+    }
+
     // 2.3. Check if idempotency key was committed while waiting for session lock
     if (idempotencyKey) {
       const existingAfterLock = await client.query(
@@ -95,9 +103,10 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
 
       if (existingAfterLock.rows.length > 0) {
         const row = existingAfterLock.rows[0];
+        const cachedBody = typeof row.response_body === 'string' ? JSON.parse(row.response_body) : row.response_body;
         return {
           status: row.response_status,
-          body: row.response_body,
+          body: cachedBody,
           fromCache: true,
         };
       }
@@ -169,7 +178,7 @@ export async function createBooking({ userId, sessionId, idempotencyKey }: Creat
         `INSERT INTO idempotency_keys (key, user_id, response_status, response_body)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (key) DO NOTHING`,
-        [idempotencyKey, userId, 201, JSON.stringify(responsePayload)]
+        [idempotencyKey, userId, 201, responsePayload]
       );
     }
 
@@ -219,15 +228,22 @@ export async function deleteBooking(bookingId: number, userId: number) {
   };
 }
 
-export async function getUserBookings(userId: number) {
-  const res = await pool.query(
-    `SELECT b.id, b.created_at, s.id as session_id, s.title, s.instructor, s.starts_at, s.duration_minutes, s.capacity
-     FROM bookings b
-     JOIN sessions s ON b.session_id = s.id
-     WHERE b.user_id = $1
-     ORDER BY s.starts_at ASC`,
-    [userId]
-  );
+export async function getUserBookings(userId: number, upcomingOnly = false) {
+  let query = `
+    SELECT b.id, b.created_at, s.id as session_id, s.title, s.instructor, s.starts_at, s.duration_minutes, s.capacity
+    FROM bookings b
+    JOIN sessions s ON b.session_id = s.id
+    WHERE b.user_id = $1
+  `;
+  const params: any[] = [userId];
+
+  if (upcomingOnly) {
+    query += ` AND s.starts_at >= (CURRENT_TIMESTAMP - INTERVAL '2 hours')`;
+  }
+
+  query += ` ORDER BY s.starts_at ASC, b.id DESC`;
+
+  const res = await pool.query(query, params);
 
   return res.rows.map((r) => ({
     id: r.id,
