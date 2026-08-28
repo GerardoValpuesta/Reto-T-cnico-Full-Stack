@@ -503,54 +503,67 @@ async function handleRunIdempotencyTest() {
   const counts = { c201: 0, cOther: 0 };
   const targetSessionId = 9100;
 
-  // Launch 10 simultaneous requests with exact same Idempotency-Key
-  const promises = Array.from({ length: 10 }).map(() =>
-    fetch(`${API_URL}/bookings`, {
+  try {
+    // Step 1: Initialize clean test session 9100 and clear user keys
+    await fetch(`${API_URL}/api/test/setup-idempotency`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${currentToken}`,
-        'Idempotency-Key': sharedKey,
-      },
-      body: JSON.stringify({ session_id: 1 }), // Session 1 or standard session
-    }).then((res) => {
-      if (res.status === 201) counts.c201++;
-      else counts.cOther++;
-    }).catch(() => counts.cOther++)
-  );
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: 1 }),
+    });
 
-  await Promise.all(promises);
+    // Step 2: Launch 10 simultaneous requests with exact same Idempotency-Key
+    const promises = Array.from({ length: 10 }).map(() =>
+      fetch(`${API_URL}/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`,
+          'Idempotency-Key': sharedKey,
+        },
+        body: JSON.stringify({ session_id: targetSessionId }),
+      })
+        .then((res) => {
+          if (res.status === 201) counts.c201++;
+          else counts.cOther++;
+        })
+        .catch(() => counts.cOther++)
+    );
 
-  document.getElementById('mIdem201').textContent = counts.c201;
-  document.getElementById('mIdemDb').textContent = 1;
+    await Promise.all(promises);
 
-  const statusContainer = document.getElementById('idempotencyStatusBadge');
-  const isPassed = counts.c201 === 10;
+    document.getElementById('mIdem201').textContent = counts.c201;
+    document.getElementById('mIdemDb').textContent = 1;
 
-  if (isPassed) {
-    statusContainer.innerHTML = `
-      <div class="result-banner result-pass">
-        ${ICONS.check}
-        <div>
-          <strong>PASS — Idempotencia Concurrente Exitosa</strong>
-          <p>Las 10 solicitudes concurrentes devolvieron HTTP 201 con la misma reserva. Cero errores 409.</p>
+    const statusContainer = document.getElementById('idempotencyStatusBadge');
+    const isPassed = counts.c201 === 10;
+
+    if (isPassed) {
+      statusContainer.innerHTML = `
+        <div class="result-banner result-pass">
+          ${ICONS.check}
+          <div>
+            <strong>PASS — Idempotencia Concurrente Exitosa</strong>
+            <p>Las 10 solicitudes concurrentes devolvieron HTTP 201 con la misma reserva. Cero errores 409.</p>
+          </div>
         </div>
-      </div>
-    `;
-  } else {
-    statusContainer.innerHTML = `
-      <div class="result-banner result-fail">
-        ${ICONS.alertTriangle}
-        <div>
-          <strong>Revisar Idempotencia</strong>
-          <p>Se obtuvieron ${counts.c201} respuestas 201 y ${counts.cOther} otros códigos.</p>
+      `;
+    } else {
+      statusContainer.innerHTML = `
+        <div class="result-banner result-fail">
+          ${ICONS.alertTriangle}
+          <div>
+            <strong>Revisar Idempotencia</strong>
+            <p>Se obtuvieron ${counts.c201} respuestas 201 y ${counts.cOther} otros códigos.</p>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
+  } catch (err) {
+    showToast('Error al ejecutar prueba de idempotencia', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Ejecutar Test de Idempotencia';
   }
-
-  btn.disabled = false;
-  btn.textContent = 'Ejecutar Test de Idempotencia';
 }
 
 async function handleRunOverlapTest() {
